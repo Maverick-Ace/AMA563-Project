@@ -6,3 +6,8 @@ https://connectpolyu-my.sharepoint.com/:w:/r/personal/24058653g_connect_polyu_hk
 
 OverLeaf项目地址：
 https://www.overleaf.com/3865241429jnqgcwcqyhtb#937479
+
+ROI定义：
+https://www.researchgate.net/figure/Shens-atlas-categorizes-268-regions-into-eight-networks-The-regions-of-the-8-networks_fig2_371785189
+
+https://github.com/canlab/Neuroimaging_Pattern_Masks/blob/master/Atlases_and_parcellations/2013_Shen_Constable_NIMG_268_parcellation/shen_268_parcellation_networklabels.csv
