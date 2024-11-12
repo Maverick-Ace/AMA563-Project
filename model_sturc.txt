@@ -1,5 +1,7 @@
 gat_loss_112
 
+
+
 class GAT_MODEL(nn.Module):
     def __init__(self, input_size, hidden_size, output_size, edge_features_dim, drop_rate=0.5, inner_weights=None, outer_weights=None):
         super(GAT_MODEL, self).__init__()
@@ -351,21 +353,6 @@ model = GAT_MODEL(
 best_model, train_loss_list, test_loss_list, r2_list, mse_list = train_gat(
     train_loader, test_loader, model, epochs=400, lr=0.001, weight_decay=1e-4, metrics=['mse', 'r2'], print_info=True, early_stop=40)
 
-# 保存模型
-save_model = input("Save model? (y/n): ")
-if save_model.lower() == 'y':
-    # 是否存在同名文件
-    if os.path.exists('gat_model.pth'):
-        # 提示
-        print("Model file already exists.")
-        # 是否覆盖
-        overwrite = input("Overwrite? (y/n): ")
-        if overwrite.lower() == 'y':
-            model_save_path = os.path.join('.', 'gat_model.pth')
-            torch.save(best_model, model_save_path)
-    else:
-        model_save_path = os.path.join('.', 'gat_model.pth')
-        torch.save(best_model, model_save_path)
 
 -----------------------------------
 
@@ -537,21 +524,6 @@ model = GAT_MODEL(
 best_model, train_loss_list, test_loss_list, r2_list, mse_list = train_gat(
     train_loader, test_loader, model, epochs=400, lr=0.001, weight_decay=1e-4, metrics=['mse', 'r2'], print_info=True, early_stop=40)
 
-# 保存模型
-save_model = input("Save model? (y/n): ")
-if save_model.lower() == 'y':
-    # 是否存在同名文件
-    if os.path.exists('gat_model.pth'):
-        # 提示
-        print("Model file already exists.")
-        # 是否覆盖
-        overwrite = input("Overwrite? (y/n): ")
-        if overwrite.lower() == 'y':
-            model_save_path = os.path.join('.', 'gat_model.pth')
-            torch.save(best_model, model_save_path)
-    else:
-        model_save_path = os.path.join('.', 'gat_model.pth')
-        torch.save(best_model, model_save_path)
 
 
 --------------------------------------------
@@ -733,21 +705,6 @@ model = GAT_MODEL(
 best_model, train_loss_list, test_loss_list, r2_list, mse_list = train_gat(
     train_loader, test_loader, model, epochs=400, lr=0.001, weight_decay=1e-4, metrics=['mse', 'r2'], print_info=True, early_stop=30)
 
-# 保存模型
-save_model = input("Save model? (y/n): ")
-if save_model.lower() == 'y':
-    # 是否存在同名文件
-    if os.path.exists('gat_model.pth'):
-        # 提示
-        print("Model file already exists.")
-        # 是否覆盖
-        overwrite = input("Overwrite? (y/n): ")
-        if overwrite.lower() == 'y':
-            model_save_path = os.path.join('.', 'gat_model.pth')
-            torch.save(best_model, model_save_path)
-    else:
-        model_save_path = os.path.join('.', 'gat_model.pth')
-        torch.save(best_model, model_save_path)
 
 
 ------------------------------------------------
@@ -849,6 +806,626 @@ model = GAT_MODEL(
 # 训练模型
 best_model, train_loss_list, test_loss_list, r2_list, mse_list = train_gat(
     train_loader, test_loader, model, epochs=400, lr=0.001, weight_decay=1e-4, metrics=['mse', 'r2'], print_info=True, early_stop=30)
+
+
+----------------------------------------------
+
+
+92
+
+Best R²: 0.6259, Best MSE: 4461.4286
+
+class GAT_MODEL(nn.Module):
+    def __init__(self, input_size, hidden_size, output_size, edge_features_dim, drop_rate=0.5, inner_weights=None, outer_weights=None):
+        super(GAT_MODEL, self).__init__()
+        self.inner_weights = inner_weights
+        self.outer_weights = outer_weights
+
+        # Linear层
+        self.fc1 = nn.Linear(hidden_size, hidden_size)
+        self.fc2 = nn.Linear(hidden_size, hidden_size)
+
+        # GAT层
+        self.conv1 = nn.ModuleList([GATConv(
+            -1, 
+            hidden_size, 
+            heads=8, 
+            dropout=drop_rate,
+            concat=True,
+            negative_slope=0.2,
+            add_self_loops=True,
+            edge_dim=edge_features_dim,
+            bias=True,
+            residual=True) for _ in range(6)])
+      
+        self.conv_out = GATConv(
+            hidden_size*8, 
+            output_size, 
+            heads=1, 
+            dropout=0.2,
+            concat=False,
+            negative_slope=0.2,
+            add_self_loops=True,
+            edge_dim=edge_features_dim,
+            bias=True,
+            residual=True)
+        
+    def forward(self, x, edge_index, edge_attr, edge_weight, batch):
+        # 去除特殊值填充
+        maskx = (x != 1000).float()
+        x = x * maskx
+        maske = (edge_attr != 1000).float()
+        edge_attr = edge_attr * maske
+
+        # # 对edge_attr进行加权，每一个权重值乘以一行特征(pls r2作为权重计算指标)
+        # edge_attr = edge_attr * edge_weight.view(-1, 1)
+
+        # # 对x进行加权，元素对应相乘（pls模型的权重）
+        # x = x.reshape(-1, 8, x.shape[1])
+        # x = torch.cat([x[i, :, :] * self.inner_weights for i in range(x.shape[0])], dim=0)
+
+        # # 对edge_attr进行加权，元素对应相乘（pls模型的权重）
+        # edge_attr = edge_attr.reshape(-1, 56, edge_attr.shape[1])
+        # edge_attr = torch.cat([edge_attr[i, :, :] * self.outer_weights for i in range(edge_attr.shape[0])], dim=0)
+
+        # GAT层
+        for conv in self.conv1:
+            x = conv(x, edge_index, edge_attr)
+            x = F.elu(x)
+            x = F.dropout(x, p=0.5, training=self.training)
+
+        x = self.conv_out(x, edge_index, edge_attr)
+        
+        # print(x.shape)
+        # print(batch, batch.shape)
+        # assert False
+        x = x.reshape(-1, 8)
+        # print(x.shape)
+        # 沿第二个维度平均池化
+        x = torch.mean(x, dim=1, keepdim=True)
+        # print(x.shape)
+        assert x.shape[1] == 1
+        return x
+    
+    def loss(self, output, target):
+        target = torch.tensor(np.array(target), dtype=torch.float32)
+        # print(output.shape, target.shape)
+        
+        output = output.to('cuda')
+        target = target.to('cuda')
+        loss = F.mse_loss(output, target)
+        # print(output, target)
+        # print(loss)
+        # assert False
+        return loss
+    
+# 创建模型实例
+model = GAT_MODEL(
+    input_size=train_node_features.shape[2], 
+    hidden_size=32, 
+    output_size=1,
+    edge_features_dim=train_edge_features.shape[2])
+
+# 训练模型
+best_model, train_loss_list, test_loss_list, r2_list, mse_list = train_gat(
+    train_loader, test_loader, model, epochs=400, lr=0.001, weight_decay=1e-4, metrics=['mse', 'r2'], print_info=True, early_stop=30)
+
+
+------------------------------------------------
+
+105
+
+R²: 0.5183, MSE: 5745.2325
+
+torch.cuda.empty_cache()
+
+class GAT_MODEL(nn.Module):
+    def __init__(self, input_size, hidden_size, output_size, edge_features_dim, drop_rate=0.2, inner_weights=None, outer_weights=None):
+        super(GAT_MODEL, self).__init__()
+        self.inner_weights = inner_weights
+        self.outer_weights = outer_weights
+
+        # Linear层
+        self.fc1 = nn.Linear(hidden_size, hidden_size)
+        self.fc2 = nn.Linear(hidden_size, hidden_size)
+
+        # GAT层
+        self.conv1 = nn.ModuleList([GATConv(
+            -1, 
+            hidden_size, 
+            heads=8, 
+            dropout=drop_rate,
+            concat=True,
+            negative_slope=0.2,
+            add_self_loops=True,
+            edge_dim=edge_features_dim,
+            bias=True,
+            residual=True) for _ in range(6)])
+      
+        self.conv_out = GATConv(
+            hidden_size*8, 
+            output_size, 
+            heads=1, 
+            dropout=drop_rate,
+            concat=False,
+            negative_slope=0.2,
+            add_self_loops=True,
+            edge_dim=edge_features_dim,
+            bias=True,
+            residual=True)
+        
+    def forward(self, x, edge_index, edge_attr, edge_weight, batch):
+        # 去除特殊值填充
+        maskx = (x != 1000).float()
+        x = x * maskx
+        maske = (edge_attr != 1000).float()
+        edge_attr = edge_attr * maske
+
+        # # 对edge_attr进行加权，每一个权重值乘以一行特征(pls r2作为权重计算指标)
+        # edge_attr = edge_attr * edge_weight.view(-1, 1)
+
+        # # 对x进行加权，元素对应相乘（pls模型的权重）
+        # x = x.reshape(-1, 8, x.shape[1])
+        # x = torch.cat([x[i, :, :] * self.inner_weights for i in range(x.shape[0])], dim=0)
+
+        # # 对edge_attr进行加权，元素对应相乘（pls模型的权重）
+        # edge_attr = edge_attr.reshape(-1, 56, edge_attr.shape[1])
+        # edge_attr = torch.cat([edge_attr[i, :, :] * self.outer_weights for i in range(edge_attr.shape[0])], dim=0)
+
+        # GAT层
+        for conv in self.conv1:
+            x = conv(x, edge_index, edge_attr)
+            x = F.elu(x)
+            x = F.dropout(x, p=0.5, training=self.training)
+
+        x = self.conv_out(x, edge_index, edge_attr)
+        
+        # print(x.shape)
+        # print(batch, batch.shape)
+        # assert False
+        x = x.reshape(-1, 8)
+        # print(x.shape)
+        # 沿第二个维度平均池化
+        x = torch.mean(x, dim=1, keepdim=True)
+        # print(x.shape)
+        assert x.shape[1] == 1
+        return x
+    
+    def loss(self, output, target):
+        target = torch.tensor(np.array(target), dtype=torch.float32)
+        # print(output.shape, target.shape)
+        
+        output = output.to('cuda')
+        target = target.to('cuda')
+        loss = F.mse_loss(output, target)
+        # print(output, target)
+        # print(loss)
+        # assert False
+        return loss
+    
+# 创建模型实例
+model = GAT_MODEL(
+    input_size=train_node_features.shape[2], 
+    hidden_size=32, 
+    output_size=1,
+    edge_features_dim=train_edge_features.shape[2])
+
+# 训练模型
+best_model, train_loss_list, test_loss_list, r2_list, mse_list = train_gat(
+    train_loader, test_loader, model, epochs=400, lr=0.001, weight_decay=1e-4, metrics=['mse', 'r2'], print_info=True, early_stop=40)
+
+
+-----------------------------------------------
+
+80
+R²: 0.4463, MSE: 6604.1347
+
+80_1 better
+
+torch.cuda.empty_cache()
+
+class GAT_MODEL(nn.Module):
+    def __init__(self, input_size, hidden_size, output_size, edge_features_dim, drop_rate=0.2, inner_weights=None, outer_weights=None):
+        super(GAT_MODEL, self).__init__()
+        self.inner_weights = inner_weights
+        self.outer_weights = outer_weights
+
+        # Linear层
+        self.fc1 = nn.Linear(hidden_size, hidden_size)
+        self.fc2 = nn.Linear(hidden_size, hidden_size)
+
+        # GAT层
+        self.conv1 = nn.ModuleList([GATConv(
+            -1, 
+            hidden_size, 
+            heads=8, 
+            dropout=drop_rate,
+            concat=True,
+            negative_slope=0.2,
+            add_self_loops=True,
+            edge_dim=edge_features_dim,
+            bias=True,
+            residual=True) for _ in range(6)])
+      
+        self.conv_out = GATConv(
+            hidden_size*8, 
+            output_size, 
+            heads=1, 
+            dropout=drop_rate,
+            concat=False,
+            negative_slope=0.2,
+            add_self_loops=True,
+            edge_dim=edge_features_dim,
+            bias=True,
+            residual=True)
+        
+    def forward(self, x, edge_index, edge_attr, edge_weight, batch):
+        # 去除特殊值填充
+        maskx = (x != 1000).float()
+        x = x * maskx
+        maske = (edge_attr != 1000).float()
+        edge_attr = edge_attr * maske
+
+        # # 对edge_attr进行加权，每一个权重值乘以一行特征(pls r2作为权重计算指标)
+        # edge_attr = edge_attr * edge_weight.view(-1, 1)
+
+        # # 对x进行加权，元素对应相乘（pls模型的权重）
+        # x = x.reshape(-1, 8, x.shape[1])
+        # x = torch.cat([x[i, :, :] * self.inner_weights for i in range(x.shape[0])], dim=0)
+
+        # # 对edge_attr进行加权，元素对应相乘（pls模型的权重）
+        # edge_attr = edge_attr.reshape(-1, 56, edge_attr.shape[1])
+        # edge_attr = torch.cat([edge_attr[i, :, :] * self.outer_weights for i in range(edge_attr.shape[0])], dim=0)
+
+        # GAT层
+        for conv in self.conv1:
+            x = conv(x, edge_index, edge_attr)
+            x = F.elu(x)
+            x = F.dropout(x, p=0.5, training=self.training)
+
+        x = self.conv_out(x, edge_index, edge_attr)
+        
+        # print(x.shape)
+        # print(batch, batch.shape)
+        # assert False
+        x = x.reshape(-1, 8)
+        # print(x.shape)
+        # 沿第二个维度平均池化
+        x = torch.mean(x, dim=1, keepdim=True)
+        # print(x.shape)
+        assert x.shape[1] == 1
+        return x
+    
+    def loss(self, output, target):
+        target = torch.tensor(np.array(target), dtype=torch.float32)
+        # print(output.shape, target.shape)
+        
+        output = output.to('cuda')
+        target = target.to('cuda')
+        loss = F.mse_loss(output, target)
+        # print(output, target)
+        # print(loss)
+        # assert False
+        return loss
+    
+# 创建模型实例
+model = GAT_MODEL(
+    input_size=train_node_features.shape[2], 
+    hidden_size=64, 
+    output_size=1,
+    edge_features_dim=train_edge_features.shape[2])
+
+# 训练模型
+best_model, train_loss_list, test_loss_list, r2_list, mse_list = train_gat(
+    train_loader, test_loader, model, epochs=400, lr=0.001, weight_decay=1e-4, metrics=['mse', 'r2'], print_info=True, early_stop=40)
+
+
+----------------------------------------------
+
+
+83
+
+Best R²: 0.5175, Best MSE: 5755.4665
+
+class GAT_MODEL(nn.Module):
+    def __init__(self, input_size, hidden_size, output_size, edge_features_dim, drop_rate=0.5, inner_weights=None, outer_weights=None):
+        super(GAT_MODEL, self).__init__()
+        self.inner_weights = inner_weights
+        self.outer_weights = outer_weights
+
+        # Linear层
+        self.fc1 = nn.Linear(hidden_size, hidden_size)
+        self.fc2 = nn.Linear(hidden_size, hidden_size)
+
+        # GAT层
+        self.conv1 = nn.ModuleList([GATConv(
+            -1, 
+            hidden_size, 
+            heads=8, 
+            dropout=drop_rate,
+            concat=True,
+            negative_slope=0.2,
+            add_self_loops=True,
+            edge_dim=edge_features_dim,
+            bias=True,
+            residual=True) for _ in range(6)])
+      
+        self.conv_out = GATConv(
+            hidden_size*8, 
+            output_size, 
+            heads=1, 
+            dropout=0.2,
+            concat=False,
+            negative_slope=0.2,
+            add_self_loops=True,
+            edge_dim=edge_features_dim,
+            bias=True,
+            residual=True)
+        
+    def forward(self, x, edge_index, edge_attr, edge_weight, batch):
+        # 去除特殊值填充
+        maskx = (x != 1000).float()
+        x = x * maskx
+        maske = (edge_attr != 1000).float()
+        edge_attr = edge_attr * maske
+
+        # # 对edge_attr进行加权，每一个权重值乘以一行特征(pls r2作为权重计算指标)
+        # edge_attr = edge_attr * edge_weight.view(-1, 1)
+
+        # # 对x进行加权，元素对应相乘（pls模型的权重）
+        # x = x.reshape(-1, 8, x.shape[1])
+        # x = torch.cat([x[i, :, :] * self.inner_weights for i in range(x.shape[0])], dim=0)
+
+        # # 对edge_attr进行加权，元素对应相乘（pls模型的权重）
+        # edge_attr = edge_attr.reshape(-1, 56, edge_attr.shape[1])
+        # edge_attr = torch.cat([edge_attr[i, :, :] * self.outer_weights for i in range(edge_attr.shape[0])], dim=0)
+
+        # GAT层
+        for conv in self.conv1:
+            x = conv(x, edge_index, edge_attr)
+            x = F.elu(x)
+            x = F.dropout(x, p=0.5, training=self.training)
+
+        x = self.conv_out(x, edge_index, edge_attr)
+        
+        # print(x.shape)
+        # print(batch, batch.shape)
+        # assert False
+        x = x.reshape(-1, 8)
+        # print(x.shape)
+        # 沿第二个维度平均池化
+        x = torch.mean(x, dim=1, keepdim=True)
+        # print(x.shape)
+        assert x.shape[1] == 1
+        return x
+    
+    def loss(self, output, target):
+        target = torch.tensor(np.array(target), dtype=torch.float32)
+        # print(output.shape, target.shape)
+        
+        output = output.to('cuda')
+        target = target.to('cuda')
+        loss = F.mse_loss(output, target)
+        # print(output, target)
+        # print(loss)
+        # assert False
+        return loss
+    
+# 创建模型实例
+model = GAT_MODEL(
+    input_size=train_node_features.shape[2], 
+    hidden_size=32, 
+    output_size=1,
+    edge_features_dim=train_edge_features.shape[2])
+
+# 训练模型
+best_model, train_loss_list, test_loss_list, r2_list, mse_list = train_gat(
+    train_loader, test_loader, model, epochs=400, lr=0.001, weight_decay=1e-4, metrics=['mse', 'r2'], print_info=True, early_stop=70)
+
+
+---------------------------------------------------
+
+133
+
+Best R²: 0.5183, Best MSE: 5745.2319
+
+class GAT_MODEL(nn.Module):
+    def __init__(self, input_size, hidden_size, output_size, edge_features_dim, drop_rate=0.5, inner_weights=None, outer_weights=None):
+        super(GAT_MODEL, self).__init__()
+        self.inner_weights = inner_weights
+        self.outer_weights = outer_weights
+
+        # Linear层
+        self.fc1 = nn.Linear(hidden_size, hidden_size)
+        self.fc2 = nn.Linear(hidden_size, hidden_size)
+
+        # GAT层
+        self.conv1 = nn.ModuleList([GATConv(
+            -1, 
+            hidden_size, 
+            heads=16, 
+            dropout=drop_rate,
+            concat=True,
+            negative_slope=0.2,
+            add_self_loops=True,
+            edge_dim=edge_features_dim,
+            bias=True,
+            residual=True) for _ in range(6)])
+      
+        self.conv_out = GATConv(
+            hidden_size*16, 
+            output_size, 
+            heads=1, 
+            dropout=0.2,
+            concat=False,
+            negative_slope=0.2,
+            add_self_loops=True,
+            edge_dim=edge_features_dim,
+            bias=True,
+            residual=True)
+        
+    def forward(self, x, edge_index, edge_attr, edge_weight, batch):
+        # 去除特殊值填充
+        maskx = (x != 1000).float()
+        x = x * maskx
+        maske = (edge_attr != 1000).float()
+        edge_attr = edge_attr * maske
+
+        # # 对edge_attr进行加权，每一个权重值乘以一行特征(pls r2作为权重计算指标)
+        # edge_attr = edge_attr * edge_weight.view(-1, 1)
+
+        # # 对x进行加权，元素对应相乘（pls模型的权重）
+        # x = x.reshape(-1, 8, x.shape[1])
+        # x = torch.cat([x[i, :, :] * self.inner_weights for i in range(x.shape[0])], dim=0)
+
+        # # 对edge_attr进行加权，元素对应相乘（pls模型的权重）
+        # edge_attr = edge_attr.reshape(-1, 56, edge_attr.shape[1])
+        # edge_attr = torch.cat([edge_attr[i, :, :] * self.outer_weights for i in range(edge_attr.shape[0])], dim=0)
+
+        # GAT层
+        for conv in self.conv1:
+            x = conv(x, edge_index, edge_attr)
+            x = F.elu(x)
+            x = F.dropout(x, p=0.5, training=self.training)
+
+        x = self.conv_out(x, edge_index, edge_attr)
+        
+        # print(x.shape)
+        # print(batch, batch.shape)
+        # assert False
+        x = x.reshape(-1, 8)
+        # print(x.shape)
+        # 沿第二个维度平均池化
+        x = torch.mean(x, dim=1, keepdim=True)
+        # print(x.shape)
+        assert x.shape[1] == 1
+        return x
+    
+    def loss(self, output, target):
+        target = torch.tensor(np.array(target), dtype=torch.float32)
+        # print(output.shape, target.shape)
+        
+        output = output.to('cuda')
+        target = target.to('cuda')
+        loss = F.mse_loss(output, target)
+        # print(output, target)
+        # print(loss)
+        # assert False
+        return loss
+    
+# 创建模型实例
+model = GAT_MODEL(
+    input_size=train_node_features.shape[2], 
+    hidden_size=32, 
+    output_size=1,
+    edge_features_dim=train_edge_features.shape[2])
+
+# 训练模型
+best_model, train_loss_list, test_loss_list, r2_list, mse_list = train_gat(
+    train_loader, test_loader, model, epochs=400, lr=0.001, weight_decay=1e-4, metrics=['mse', 'r2'], print_info=True, early_stop=70)
+
+
+--------------------------------------
+
+
+71
+
+Best R²: 0.5670, Best MSE: 5165.0418
+
+class GAT_MODEL(nn.Module):
+    def __init__(self, input_size, hidden_size, output_size, edge_features_dim, drop_rate=0.5, inner_weights=None, outer_weights=None):
+        super(GAT_MODEL, self).__init__()
+        self.inner_weights = inner_weights
+        self.outer_weights = outer_weights
+
+        # Linear层
+        self.fc1 = nn.Linear(hidden_size, hidden_size)
+        self.fc2 = nn.Linear(hidden_size, hidden_size)
+
+        # GAT层
+        self.conv1 = nn.ModuleList([GATConv(
+            -1, 
+            hidden_size, 
+            heads=8, 
+            dropout=drop_rate,
+            concat=True,
+            negative_slope=0.2,
+            add_self_loops=True,
+            edge_dim=edge_features_dim,
+            bias=True,
+            residual=True) for _ in range(6)])
+      
+        self.conv_out = GATConv(
+            hidden_size*8, 
+            output_size, 
+            heads=1, 
+            dropout=0.2,
+            concat=False,
+            negative_slope=0.2,
+            add_self_loops=True,
+            edge_dim=edge_features_dim,
+            bias=True,
+            residual=True)
+        
+    def forward(self, x, edge_index, edge_attr, edge_weight, batch):
+        # 去除特殊值填充
+        maskx = (x != 1000).float()
+        x = x * maskx
+        maske = (edge_attr != 1000).float()
+        edge_attr = edge_attr * maske
+
+        # # 对edge_attr进行加权，每一个权重值乘以一行特征(pls r2作为权重计算指标)
+        # edge_attr = edge_attr * edge_weight.view(-1, 1)
+
+        # # 对x进行加权，元素对应相乘（pls模型的权重）
+        # x = x.reshape(-1, 8, x.shape[1])
+        # x = torch.cat([x[i, :, :] * self.inner_weights for i in range(x.shape[0])], dim=0)
+
+        # # 对edge_attr进行加权，元素对应相乘（pls模型的权重）
+        # edge_attr = edge_attr.reshape(-1, 56, edge_attr.shape[1])
+        # edge_attr = torch.cat([edge_attr[i, :, :] * self.outer_weights for i in range(edge_attr.shape[0])], dim=0)
+
+        # GAT层
+        for conv in self.conv1:
+            x = conv(x, edge_index, edge_attr)
+            x = F.elu(x)
+            x = F.dropout(x, p=0.2, training=self.training)
+
+        x = self.conv_out(x, edge_index, edge_attr)
+        
+        # print(x.shape)
+        # print(batch, batch.shape)
+        # assert False
+        x = x.reshape(-1, 8)
+        # print(x.shape)
+        # 沿第二个维度平均池化
+        x = torch.mean(x, dim=1, keepdim=True)
+        # print(x.shape)
+        assert x.shape[1] == 1
+        return x
+    
+    def loss(self, output, target):
+        target = torch.tensor(np.array(target), dtype=torch.float32)
+        # print(output.shape, target.shape)
+        
+        output = output.to('cuda')
+        target = target.to('cuda')
+        loss = F.mse_loss(output, target)
+        # print(output, target)
+        # print(loss)
+        # assert False
+        return loss
+    
+# 创建模型实例
+model = GAT_MODEL(
+    input_size=train_node_features.shape[2], 
+    hidden_size=32, 
+    output_size=1,
+    edge_features_dim=train_edge_features.shape[2])
+
+# 训练模型
+best_model, train_loss_list, test_loss_list, r2_list, mse_list = train_gat(
+    train_loader, test_loader, model, epochs=400, lr=0.001, weight_decay=1e-4, metrics=['mse', 'r2'], print_info=True, early_stop=70)
 
 # 保存模型
 # 是否存在同名文件
